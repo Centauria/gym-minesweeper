@@ -10,6 +10,7 @@
 ## Installation
 
 ```bash
+git clone https://github.com/Jeffreyyao/gym-minesweeper.git
 cd gym-minesweeper
 pip install -e .
 ```
