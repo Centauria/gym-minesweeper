@@ -1,7 +1,9 @@
 # Gym Minesweeper
 **Gym Minesweeper is an environment for OpenAI Gym simulating minesweeper game.**
 
-![Minesweeper Solver](https://jeffreyyao.github.io/images/minesweeper_solver.gif)
+<p align="center">
+<img align="center" src="https://jeffreyyao.github.io/images/minesweeper_solver.gif"/>
+</p>
 
 ---
 
