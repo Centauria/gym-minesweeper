@@ -1,5 +1,7 @@
-# gym-minesweeper
-Gym Minesweeper is an environment for simulating minesweeper game with custom sizes and number of mines.
+# Gym Minesweeper
+Gym Minesweeper is an environment for simulating minesweeper game with custom sizes and number of mines. Built on top of pygame.
+
+![Minesweeper Solver](https://jeffreyyao.github.io/images/minesweeper_solver.gif)
 
 ## Installation
 
