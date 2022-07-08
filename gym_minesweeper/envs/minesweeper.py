@@ -25,7 +25,7 @@ class MinesweeperEnv(gym.Env):
     #   renders the current state using pygame
 
     def __init__(self, height=16, width=16, num_mines=40):
-        self.observation_space = spaces.MultiDiscrete([height,width])
+        self.observation_space = spaces.Box(-1, 8, shape=(height,width), dtype=int)
         self.action_space = spaces.MultiDiscrete([height,width])
 
         self.height = height
@@ -34,7 +34,7 @@ class MinesweeperEnv(gym.Env):
         self.win_reward = 50
         self.fail_reward = -10
         self.map = np.array([[False]*width for _ in range(height)])
-        self.state = np.zeros((height, width))-1
+        self.state = np.zeros((height, width),dtype=int)-1
         self.step_cntr = 0
         self.step_cntr_max = (height*width-num_mines)*2
 
@@ -59,7 +59,7 @@ class MinesweeperEnv(gym.Env):
     def reset(self, seed=None, return_info=False, options=None):
         self.generate_mines()
         self.step_cntr = 0
-        self.state = np.zeros((self.height, self.width))-1
+        self.state = np.zeros((self.height, self.width),dtype=int)-1
         return self.state
 
     def get_num_opened(self):
@@ -87,30 +87,29 @@ class MinesweeperEnv(gym.Env):
                         self.update_state(i,j)
 
     def step(self, action):
-        if type(action)!=type([]):
-            raise TypeError
         if len(action)!=2 or action[0]<0 or action[1]>=self.height or action[1]<0 or action[1]>=self.width:
             raise ValueError
+        info = self._get_info()
         if self.step_cntr==self.step_cntr_max:
-            return self.state, 0, True, None
+            return self.state, 0, True, info
         else:
             self.step_cntr += 1
         x,y = action[0],action[1]
         if self.map[x][y]:
-            return self.state, self.fail_reward, True, None
+            return self.state, self.fail_reward, True, info
         else:
             num_opened = self.get_num_opened()
             if self.state[x,y]!=-1:
-                return self.state, 0, False, None
+                return self.state, 0, False, info
             self.update_state(x,y)
             new_num_opened = self.get_num_opened()
             if new_num_opened==self.height*self.width-self.num_mines:
-                return self.state, self.win_reward, True, None
-            return self.state, new_num_opened-num_opened, False, None
+                return self.state, self.win_reward, True, info
+            return self.state, new_num_opened-num_opened, False, info
 
     def drawGrid(self):
-        for x in range(0, self.window_width, self.block_size):
-            for y in range(0, self.window_height, self.block_size):
+        for y in range(0, self.window_width, self.block_size):
+            for x in range(0, self.window_height, self.block_size):
                 rect = pygame.Rect(x, y, self.block_size, self.block_size)
                 num = int(self.state[int(x/self.block_size),int(y/self.block_size)])
                 if num==-1:
@@ -131,6 +130,9 @@ class MinesweeperEnv(gym.Env):
             self.font = pygame.freetype.SysFont(pygame.font.get_default_font(), 13)
         self.screen.fill((0,0,0))
         self.drawGrid()
+
+    def _get_info(self):
+        return {"map":self.map}
     
     def close(self):
         if self.screen is not None:
