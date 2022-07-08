@@ -10,8 +10,7 @@
 ## Installation
 
 ```bash
-cd gym-minesweeper
-pip install -e .
+pip install gym-minesweeper
 ```
 
 ## Running
