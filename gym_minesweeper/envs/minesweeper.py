@@ -1,7 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from random import randrange
+from scipy.signal import convolve2d
 import pygame
 import pygame.freetype
 
@@ -24,93 +24,88 @@ class MinesweeperEnv(gym.Env):
     # RENDER
     #   renders the current state using pygame
 
-    def __init__(self, height=16, width=16, num_mines=40):
+    def __init__(self, height=16, width=16, num_mines=40, prevent_first_bomb=True):
         self.observation_space = spaces.Box(-1, 8, shape=(height, width), dtype=int)
         self.action_space = spaces.MultiDiscrete([height, width])
 
         self.height = height
         self.width = width
         self.num_mines = num_mines
+        self.prevent_first_bomb = prevent_first_bomb
+
         self.win_reward = 50
         self.fail_reward = -10
-        self.map = np.array([[False] * width for _ in range(height)])
-        self.state = np.zeros((height, width), dtype=int) - 1
-        self.step_cntr = 0
-        self.step_cntr_max = (height * width - num_mines) * 2
+        self.map = None
+        self.state = None
+        self.surroundings = None
+        self.step_counter = 0
+        self.step_counter_max = (height * width - num_mines) * 2
+        self.core = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.int8)
 
         self.block_size = 25
         self.window_height = self.block_size * height
         self.window_width = self.block_size * width
-        self.map = None
-        self.generate_mines()
 
         self.screen = None
 
-    def generate_mines(self):
-        self.map = np.array([[False] * self.width for _ in range(self.height)])
-        for _ in range(self.num_mines):
-            x = randrange(self.height)
-            y = randrange(self.width)
-            while self.map[x, y]:
-                x = randrange(self.height)
-                y = randrange(self.width)
-            self.map[x, y] = True
+    def generate_mines(self, start_position=None):
+        samples = self.height * self.width
+        self.map = np.zeros(samples, dtype=np.int8)
+        if start_position is None:
+            self.map[np.random.choice(samples, self.num_mines, replace=False)] = 1
+        else:
+            self.map[np.random.choice(samples - 1, self.num_mines, replace=False)] = 1
+            y, x = start_position
+            index = y * self.width + x
+            self.map[-1] = self.map[index]
+            self.map[index] = 0
+        self.map = self.map.reshape(self.height, self.width)
+        self.surroundings = convolve2d(self.map, self.core, mode="same")
 
     def reset(self, seed=None, return_info=False, options=None):
-        self.generate_mines()
-        self.step_cntr = 0
-        self.state = np.zeros((self.height, self.width), dtype=int) - 1
+        if not self.prevent_first_bomb:
+            self.generate_mines()
+        self.step_counter = 0
+        self.state = -np.ones((self.height, self.width), dtype=np.int8)
         return self.state
 
     def get_num_opened(self):
         return (self.state >= 0).astype(int).sum()
 
-    def get_num_surr(self, x, y):
-        count = 0
-        for i in range(max(0, x - 1), min(self.height, x + 2)):
-            for j in range(max(0, y - 1), min(self.width, y + 2)):
-                if not (i == x and j == y):
-                    if self.map[i, j]:
-                        count += 1
-        return count
-
-    def update_state(self, x, y):
-        num_surr = self.get_num_surr(x, y)
-        self.state[x, y] = num_surr
-        if num_surr == 0:
-            for i in range(max(0, x - 1), min(self.height, x + 2)):
-                for j in range(max(0, y - 1), min(self.width, y + 2)):
+    def update_state(self, y, x):
+        self.state[y, x] = self.surroundings[y, x]
+        if self.state[y, x] == 0:
+            for j in range(max(0, y - 1), min(self.height, y + 2)):
+                for i in range(max(0, x - 1), min(self.width, x + 2)):
                     if (not (i == x and j == y)) and self.state[i, j] == -1:
                         self.update_state(i, j)
 
     def step(self, action):
-        if (
-            len(action) != 2
-            or action[0] < 0
-            or action[0] >= self.height
-            or action[1] < 0
-            or action[1] >= self.width
-        ):
+        if len(action) != 2:
             raise ValueError
+        y, x = action[0], action[1]
+        if y < 0 or y >= self.height or x < 0 or x >= self.width:
+            raise ValueError
+        if self.map is None:
+            self.generate_mines(action)
         info = self._get_info()
-        if self.step_cntr == self.step_cntr_max:
+        if self.step_counter == self.step_counter_max:
             return self.state, 0, True, info
         else:
-            self.step_cntr += 1
-        x, y = action[0], action[1]
-        if self.map[x][y]:
+            self.step_counter += 1
+        if self.map[y, x]:
             return self.state, self.fail_reward, True, info
         else:
             num_opened = self.get_num_opened()
-            if self.state[x, y] != -1:
+            if self.state[y, x] != -1:
                 return self.state, 0, False, info
-            self.update_state(x, y)
+            self.update_state(y, x)
             new_num_opened = self.get_num_opened()
             if new_num_opened == self.height * self.width - self.num_mines:
                 return self.state, self.win_reward, True, info
             return self.state, new_num_opened - num_opened, False, info
 
-    def drawGrid(self):
+    def draw_grid(self):
         for y in range(0, self.window_width, self.block_size):
             for x in range(0, self.window_height, self.block_size):
                 rect = pygame.Rect(y, x, self.block_size, self.block_size)
@@ -134,7 +129,7 @@ class MinesweeperEnv(gym.Env):
             )
             self.font = pygame.freetype.SysFont(pygame.font.get_default_font(), 13)
         self.screen.fill((0, 0, 0))
-        self.drawGrid()
+        self.draw_grid()
 
     def _get_info(self):
         return {"map": self.map}
